@@ -109,6 +109,7 @@ fn withdraw(_program_id: &Pubkey, accounts: &[AccountInfo], amount: u64) -> Prog
 
     assert!(authority_info.is_signer);
     assert_eq!(wallet.authority, *authority_info.key);
+    // @audit does not verify that vault_info is PDA of authority. can withdraw other people's vaults?
     assert_eq!(wallet.vault, *vault_info.key);
 
     if amount > **vault_info.lamports.borrow_mut() {
