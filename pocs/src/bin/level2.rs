@@ -9,6 +9,9 @@ use solana_program::native_token::lamports_to_sol;
 
 use pocs::assert_tx_success;
 use solana_program::{native_token::sol_to_lamports, pubkey::Pubkey, system_program};
+// need to pull these in
+use solana_program::instruction::{AccountMeta, Instruction};
+use borsh::{BorshSerialize};
 
 struct Challenge {
     hacker: Keypair,

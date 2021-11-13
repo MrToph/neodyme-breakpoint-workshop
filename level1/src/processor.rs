@@ -87,6 +87,7 @@ fn withdraw(program_id: &Pubkey, accounts: &[AccountInfo], amount: u64) -> Progr
     let wallet = Wallet::deserialize(&mut &(*wallet_info.data).borrow_mut()[..])?;
 
     assert_eq!(wallet_info.owner, program_id);
+    // @audit doesn't even check that authority is signer
     assert_eq!(wallet.authority, *authority_info.key);
 
     if amount > **wallet_info.lamports.borrow_mut() {

