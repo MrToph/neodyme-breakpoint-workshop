@@ -99,6 +99,8 @@ fn withdraw(program_id: &Pubkey, accounts: &[AccountInfo], amount: u64) -> Progr
     }
 
     **wallet_info.lamports.borrow_mut() -= amount;
+    // @audit wallet is owned by this contract and may therefore reduce its lamports?
+    // @audit set destination_info to victim wallet and overflow => decrease
     **destination_info.lamports.borrow_mut() += amount;
 
     wallet
