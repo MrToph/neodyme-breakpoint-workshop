@@ -29,6 +29,7 @@ pub fn process_instruction(
     }
 }
 
+// @audit-info creates a vault
 fn initialize(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -76,6 +77,7 @@ fn initialize(
     Ok(())
 }
 
+// @audit-info creates a pool for the vault
 fn create_pool(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
     let vault_info = next_account_info(account_info_iter)?;
@@ -89,6 +91,7 @@ fn create_pool(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     );
     assert_eq!(pool_info.owner, program_id);
     // check that account is uninitialized
+    // @audit-ok why are we not using data_is_empty? requires all bytes == 0. because this contract is supposed to have a correct data size already and be created by caller for this program
     if pool_info.data.borrow_mut().into_iter().any(|b| *b != 0) {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
@@ -139,6 +142,7 @@ fn withdraw(program_id: &Pubkey, accounts: &[AccountInfo], amount: u64) -> Progr
     let withdraw_authority_info = next_account_info(account_info_iter)?;
     let mut pool = TipPool::deserialize(&mut &(*pool_info.data).borrow_mut()[..])?;
 
+    // @audit-info checks ownership but not that vault is a Vault, pool is a Pool struct
     assert_eq!(vault_info.owner, program_id);
     assert_eq!(pool_info.owner, program_id);
     assert!(
@@ -146,6 +150,9 @@ fn withdraw(program_id: &Pubkey, accounts: &[AccountInfo], amount: u64) -> Progr
         "withdraw authority must sign"
     );
     assert_eq!(pool.vault, *vault_info.key);
+    // @audit-issue can we fake a pool as vault and access a different withdraw_auth? yes, pool.withdraw_authority maps to vault.creator
+    // @audit-info and pool.vault maps to vault.fee_recipient
+    // @audit-info and pool.value maps to vault.fee, we control all of it
     assert_eq!(*withdraw_authority_info.key, pool.withdraw_authority);
 
     pool.value = match pool.value.checked_sub(amount) {
