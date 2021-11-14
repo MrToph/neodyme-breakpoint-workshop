@@ -122,6 +122,7 @@ fn withdraw(program_id: &Pubkey, accounts: &[AccountInfo], amount: u64) -> Progr
     let mint = next_account_info(account_info_iter)?;
     let spl_token = next_account_info(account_info_iter)?;
 
+    // @audit-info if we want to withdraw from victim, owner_info needs to be correct
     let (wallet_address, _) = get_wallet_address(owner_info.key, program_id);
     let (authority_address, authority_seed) = get_authority(program_id);
 
@@ -129,8 +130,10 @@ fn withdraw(program_id: &Pubkey, accounts: &[AccountInfo], amount: u64) -> Progr
     assert_eq!(authority_info.key, &authority_address);
     assert!(owner_info.is_signer, "owner must sign!");
 
+    // @audit-info transfer below uses mint.key as the mint identifier, must set the correct one
     let decimals = mint.data.borrow()[44];
 
+    // @audit-issue this does a SIGNED invoke. can use a fake spl_token contract. due to signature extension, we inherit the authority and can withdraw the actual tokens
     invoke_signed(
         &spl_token::instruction::transfer_checked(
             &spl_token.key,

